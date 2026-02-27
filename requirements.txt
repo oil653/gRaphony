@@ -2,5 +2,4 @@ cffi==2.0.0
 crossfiledialog==1.1.0
 just_playback==0.1.8
 pycparser==3.0
-slint==1.15.1b1
 tinytag==2.2.0
