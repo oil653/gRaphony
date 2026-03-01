@@ -1,8 +1,8 @@
 from sys import stderr
 
 from textual.app import App, ComposeResult
-from textual.widgets import Footer, Header, Digits, Button
-from textual.containers import HorizontalGroup, VerticalGroup, VerticalScroll, HorizontalScroll
+from textual.widgets import Footer, Header, Digits, Button, TextArea
+from textual.containers import HorizontalGroup, VerticalGroup, VerticalScroll, HorizontalScroll, Container
 from textual.reactive import reactive
 
 from textual_image.widget import Image
@@ -10,40 +10,36 @@ from textual_image.widget import Image
 from just_playback import Playback
 from crossfiledialog import open_file, open_multiple
 
-class CustomDigits(Digits):
+class TimeRemaining(Digits):
     """ Digits that update when called """
 
     media_length = reactive(0.0)
     media_position = reactive(0.0)
     
-    def on_mount(self) -> None: 
-        """ Event handler called when the thing displays """
-        self.update_timer = self.set_interval(1 / 60, self.update_time, pause=True)
+    def watch_media_length(self, length: float) -> None:
+        len_minutes, len_seconds = divmod(length, 60)
+        len_hours, len_minutes = divmod(len_minutes, 60)
         
-    def update_time(self) -> None: 
-        self.time = self.total + (monotonic() - self.start_time)
+        pos_minutes, pos_seconds = divmod(self.media_position, 60)
+        pos_hours, pos_minutes = divmod(pos_minutes, 60)
+        self.update(f"{pos_hours:02,.0f}:{pos_minutes:02.0f}:{pos_seconds:05.2f} / {len_hours:02,.0f}:{len_minutes:02.0f}:{len_seconds:05.2f}")
         
-    def watch_time(self, time: float) -> None:
-        """Called when the time attribute changes."""
-        minutes, seconds = divmod(time, 60)
-        hours, minutes = divmod(minutes, 60)
-        self.update(f"{hours:02,.0f}:{minutes:02.0f}:{seconds:05.2f}")
         
-    def start(self) -> None:
-        self.start_time = monotonic()
-        self.update_timer.resume()
+    def watch_media_position(self, pos: float) -> None:
+        len_minutes, len_seconds = divmod(self.media_length, 60)
+        len_hours, len_minutes = divmod(len_minutes, 60)
         
-    def pause(self) -> None:
-        self.update_timer.pause()
-        self.total += monotonic() - self.start_time
-        self.time = self.total
-        
-    def reset(self) -> None:
-        self.pause()
-        self.time = 0.0
-        self.total = 0.0
+        pos_minutes, pos_seconds = divmod(pos, 60)
+        pos_hours, pos_minutes = divmod(pos_minutes, 60)
+        self.update(f"{pos_hours:02,.0f}:{pos_minutes:02.0f}:{pos_seconds:05.2f} / {len_hours:02,.0f}:{len_minutes:02.0f}:{len_seconds:05.2f}")
 
-class MainApp(App[None]):
+class MediaControls(HorizontalGroup):
+    def compose(self) -> ComposeResult:
+        yield Button("|<", id="previous")
+        yield Button("|>", id="play", variant="primary")
+        yield Button(">|", id="next")
+
+class MainApp(App[None]):    
     CSS_PATH = "main.tcss"
     
     BINDINGS = [
@@ -58,11 +54,9 @@ class MainApp(App[None]):
         yield Header()
         
         with HorizontalGroup(id="playbar"):
-            yield Button("|<", id="previous")
-            yield Button("|>", id="play", variant="primary")
-            yield Button(">|", id="next")
-            
-            yield Digits(f"{self.media_position} / {self.media_length}")
+            yield MediaControls(id="media_controls", classes="left")
+            yield TimeRemaining(id="time_remaining", classes="center")
+            yield Container(classes="right")
             
         
         
@@ -70,17 +64,18 @@ class MainApp(App[None]):
     
     
     def __init__(self) -> None:
-        self.player = Playback()
         super().__init__()
+        self.player = Playback()
 
     
     def on_mount(self) -> None: 
-        """ Sets the timer tickrate to 1 tick / sec """
+        # Tick every 1 sec
         self.timer = self.set_interval(1 / 60, self.tick, pause=True)
         self.timer.pause() # The player will not play anything by default
         
     def tick(self) -> None:
-        self.media_position = self.player.curr_pos
+        widget = self.query_one(TimeRemaining)
+        widget.media_position = self.player.curr_pos
         
         
     def action_toggle_dark(self) -> None:
@@ -88,7 +83,6 @@ class MainApp(App[None]):
         self.theme = ("textual-dark" if self.theme == "textual-light" else "textual-light")
         
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        """ Handles button events """
         idb: str = event.button.id
         
         if idb == "play" and self.player.playing:
@@ -100,8 +94,8 @@ class MainApp(App[None]):
         path = open_file("Chose a file to add to the queue", filter="*.mp3")
         try:
             self.player.load_file(path)
-            self.media_length = self.player.duration
-            self.media_position = self.player.curr_pos
+            widget = self.query_one(TimeRemaining)
+            widget.media_length = self.player.duration
         except Exception as e:
             print(f"Failed to open file at path \"{path}\": {e}", file=stderr)
         
@@ -116,7 +110,7 @@ class MainApp(App[None]):
         btn = self.query_one("#play")
         btn.label = "||"
         
-    def pause(self) -> None: 
+    def pause(self) -> None:
         self.timer.pause()
         self.player.pause()
         

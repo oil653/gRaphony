@@ -50,7 +50,7 @@ MainApp {
     background: $background;
     height: 5;
     margin: 1; 
-    min-width: 50;
+    min-width: 100;
     padding: 1;
 }
 
@@ -63,4 +63,29 @@ MainApp {
 
 #playbar Button {
     height: 3;
+}
+
+
+
+#playbar {
+    width: 100%;
+    height: auto;
+}
+
+
+
+.left, .center, .right {
+    width: 1fr;
+}
+
+.left {
+    align-horizontal: left;
+}
+
+.center {
+    align-horizontal: center;
+}
+
+.right {
+    align-horizontal: right;
 }
