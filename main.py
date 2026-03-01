@@ -1,16 +1,20 @@
-from time import monotonic
+from sys import stderr
 
 from textual.app import App, ComposeResult
 from textual.widgets import Footer, Header, Digits, Button
-from textual.containers import HorizontalGroup, VerticalScroll
+from textual.containers import HorizontalGroup, VerticalGroup, VerticalScroll, HorizontalScroll
 from textual.reactive import reactive
 
-class TimeDisplay(Digits):
-    """Widgets to display elpased time."""
-    
-    start_time = reactive(monotonic)
-    time = reactive(0.0)
-    total = reactive(0.0)
+from textual_image.widget import Image
+
+from just_playback import Playback
+from crossfiledialog import open_file, open_multiple
+
+class CustomDigits(Digits):
+    """ Digits that update when called """
+
+    media_length = reactive(0.0)
+    media_position = reactive(0.0)
     
     def on_mount(self) -> None: 
         """ Event handler called when the thing displays """
@@ -38,54 +42,90 @@ class TimeDisplay(Digits):
         self.pause()
         self.time = 0.0
         self.total = 0.0
-        
-        
-        
 
-class StopWatch(HorizontalGroup):
-    """ A stopwatch widget """
-    
-    def on_button_pressed(self, event: Button.Pressed) -> None: 
-        button_id = event.button.id
-        time_display = self.query_one(TimeDisplay)
-        
-        if button_id == "start":
-            time_display.start()
-            self.add_class("started")
-        elif button_id == "stop": 
-            time_display.pause()
-            self.remove_class("started")
-        elif button_id == "reset":
-            time_display.reset()
-
-    def compose(self): 
-        yield Button("Start", id="start", variant="success")
-        yield Button("Stop", id="stop", variant="error")
-        yield Button("Reset", id="reset")
-        yield TimeDisplay()
-
-
-    
-
-class StartwatchApp(App): 
+class MainApp(App[None]):
     CSS_PATH = "main.tcss"
-
+    
     BINDINGS = [
         ("d", "toggle_dark", "Toggle dark mode"),
-        ("s", "explode", "DETONATE")
+        ("o", "open_file", "Open a media file")
     ]
-
+    
+    # Something that plays media
+    player: Playback
+    
     def compose(self) -> ComposeResult:
-        # Create a child widget for the app
         yield Header()
+        
+        with HorizontalGroup(id="playbar"):
+            yield Button("|<", id="previous")
+            yield Button("|>", id="play", variant="primary")
+            yield Button(">|", id="next")
+            
+            yield Digits(f"{self.media_position} / {self.media_length}")
+            
+        
+        
         yield Footer()
-        yield VerticalScroll(StopWatch(), StopWatch(), StopWatch())
+    
+    
+    def __init__(self) -> None:
+        self.player = Playback()
+        super().__init__()
 
+    
+    def on_mount(self) -> None: 
+        """ Sets the timer tickrate to 1 tick / sec """
+        self.timer = self.set_interval(1 / 60, self.tick, pause=True)
+        self.timer.pause() # The player will not play anything by default
+        
+    def tick(self) -> None:
+        self.media_position = self.player.curr_pos
+        
+        
     def action_toggle_dark(self) -> None:
-        self.theme = (
-            "textual-dark" if self.theme == "textual-light" else "textual-light"
-        )
+        """ Toggles between dark and light mode """
+        self.theme = ("textual-dark" if self.theme == "textual-light" else "textual-light")
+        
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """ Handles button events """
+        idb: str = event.button.id
+        
+        if idb == "play" and self.player.playing:
+            self.pause()
+        elif idb == "play" and not self.player.playing:
+            self.play()
+         
+    def action_open_file(self) -> None:
+        path = open_file("Chose a file to add to the queue", filter="*.mp3")
+        try:
+            self.player.load_file(path)
+            self.media_length = self.player.duration
+            self.media_position = self.player.curr_pos
+        except Exception as e:
+            print(f"Failed to open file at path \"{path}\": {e}", file=stderr)
+        
+    def play(self) -> None:
+        self.timer.resume()
+        
+        if self.player.active:
+            self.player.resume()
+        else:
+            self.player.play()
+        
+        btn = self.query_one("#play")
+        btn.label = "||"
+        
+    def pause(self) -> None: 
+        self.timer.pause()
+        self.player.pause()
+        
+        btn = self.query_one("#play")
+        btn.label = "|>"
+    
+        
+    
 
 if __name__ == "__main__": 
-    app = StartwatchApp()
+    app = MainApp()
     app.run()
