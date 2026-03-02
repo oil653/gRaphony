@@ -55,24 +55,17 @@ MainApp {
 }
 
 #playbar {
-    height: 3;
+    height: 10;
     width: 100%;
     background: $boost;
     content-align-horizontal: center;
+    border: solid;
+    # dock: top;
 }
 
-#playbar Button {
-    height: 3;
+#main_title {
+    width: 2;
 }
-
-
-
-#playbar {
-    width: 100%;
-    height: auto;
-}
-
-
 
 .left, .center, .right {
     width: 1fr;

@@ -1,7 +1,7 @@
 from sys import stderr
 
 from textual.app import App, ComposeResult
-from textual.widgets import Footer, Header, Digits, Button, TextArea
+from textual.widgets import Footer, Header, Digits, Button, Label
 from textual.containers import HorizontalGroup, VerticalGroup, VerticalScroll, HorizontalScroll, Container
 from textual.reactive import reactive
 
@@ -51,14 +51,20 @@ class MainApp(App[None]):
     player: Playback
     
     def compose(self) -> ComposeResult:
-        yield Header()
-        
-        with HorizontalGroup(id="playbar"):
-            yield MediaControls(id="media_controls", classes="left")
-            yield TimeRemaining(id="time_remaining", classes="center")
-            yield Container(classes="right")
-            
-        
+        yield Header(id="header")
+
+        with VerticalGroup():
+            # Top status bar with media controls
+            with VerticalGroup(id="playbar"):
+                # Top thingy with basic controls
+                with HorizontalGroup():
+                    yield MediaControls(id="media_controls")
+                    yield Container()
+                    yield TimeRemaining(id="time_remaining")
+                # Less top thingy with the name of the thing
+                with HorizontalGroup():
+                    yield Label("thing", id="thing")
+
         
         yield Footer()
     
@@ -83,7 +89,7 @@ class MainApp(App[None]):
         self.theme = ("textual-dark" if self.theme == "textual-light" else "textual-light")
         
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        idb: str = event.button.id
+        idb = event.button.id
         
         if idb == "play" and self.player.playing:
             self.pause()
