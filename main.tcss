@@ -54,17 +54,31 @@ MainApp {
     padding: 1;
 }
 
-#playbar {
+# Top bar, with the music controls, and the playing media label
+#top_bar {
     height: 10;
     width: 100%;
     background: $boost;
     content-align-horizontal: center;
     border: solid;
-    # dock: top;
 }
 
-#main_title {
-    width: 2;
+# Music controls
+#playbar {
+    height: 5;
+    width: 100%;
+    content-align-horizontal: center;
+}
+
+# The labels for the media currently playing
+#media_label_container {
+    width: 100%;
+    height: 5;
+}
+
+#thing { 
+    height: 1;
+    color: blue;
 }
 
 .left, .center, .right {

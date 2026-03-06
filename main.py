@@ -4,6 +4,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import Footer, Header, Digits, Button, Label
 from textual.containers import HorizontalGroup, VerticalGroup, VerticalScroll, HorizontalScroll, Container
 from textual.reactive import reactive
+from textual.css.query import NoMatches
 
 from textual_image.widget import Image
 
@@ -46,35 +47,45 @@ class MainApp(App[None]):
         ("d", "toggle_dark", "Toggle dark mode"),
         ("o", "open_file", "Open a media file")
     ]
+
+        
+    def __init__(self) -> None:
+        super().__init__()
+        self.player = Playback()
     
     # Something that plays media
     player: Playback
+    current_title = reactive("NOTHING", init=True)
     
     def compose(self) -> ComposeResult:
         yield Header(id="header")
 
-        with VerticalGroup():
-            # Top status bar with media controls
-            with VerticalGroup(id="playbar"):
-                # Top thingy with basic controls
-                with HorizontalGroup():
-                    yield MediaControls(id="media_controls")
-                    yield Container()
-                    yield TimeRemaining(id="time_remaining")
-                # Less top thingy with the name of the thing
-                with HorizontalGroup():
-                    yield Label("thing", id="thing")
+        with VerticalGroup(id="top_bar"):
+            # Top thingy with basic controls
+            with HorizontalGroup(id="playbar"):
+                yield MediaControls(id="media_controls")
+                yield Container()
+                yield TimeRemaining(id="time_remaining")
+
+            # The name of the media
+            with HorizontalGroup(id="media_label_container"):
+                yield Label(f"Playing: {self.current_title}", id="current_title")
 
         
         yield Footer()
-    
-    
-    def __init__(self) -> None:
-        super().__init__()
-        self.player = Playback()
+
+
+    def watch_current_title(self, old: str, new: str) -> None:
+        try: 
+            self.query_one("#current_title").label = f"Playing: {new}"
+        except NoMatches:
+            pass
 
     
     def on_mount(self) -> None: 
+        self.title = "gRaphony"
+        self.sub_title = "Music player"
+
         # Tick every 1 sec
         self.timer = self.set_interval(1 / 60, self.tick, pause=True)
         self.timer.pause() # The player will not play anything by default
@@ -102,6 +113,8 @@ class MainApp(App[None]):
             self.player.load_file(path)
             widget = self.query_one(TimeRemaining)
             widget.media_length = self.player.duration
+
+            self.current_title = path                       # TODO: Get the metadata out of the music
         except Exception as e:
             print(f"Failed to open file at path \"{path}\": {e}", file=stderr)
         
