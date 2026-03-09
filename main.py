@@ -4,9 +4,11 @@ from textual.app import App, ComposeResult
 from textual.widgets import Footer, Header, Digits, Button, Label
 from textual.containers import HorizontalGroup, VerticalGroup, VerticalScroll, HorizontalScroll, Container
 from textual.reactive import reactive
-from textual.css.query import NoMatches
+from textual.css.query import NoMatches 
 
 from textual_image.widget import Image
+
+from tinytag import TinyTag
 
 from just_playback import Playback
 from crossfiledialog import open_file, open_multiple
@@ -64,7 +66,6 @@ class MainApp(App[None]):
             # Top thingy with basic controls
             with HorizontalGroup(id="playbar"):
                 yield MediaControls(id="media_controls")
-                yield Container()
                 yield TimeRemaining(id="time_remaining")
 
             # The name of the media
@@ -80,7 +81,6 @@ class MainApp(App[None]):
             self.query_one("#current_title").label = f"Playing: {new}"
         except NoMatches:
             pass
-
     
     def on_mount(self) -> None: 
         self.title = "gRaphony"
@@ -114,7 +114,8 @@ class MainApp(App[None]):
             widget = self.query_one(TimeRemaining)
             widget.media_length = self.player.duration
 
-            self.current_title = path                       # TODO: Get the metadata out of the music
+            meta =  TinyTag.get(path)
+            self.current_title = meta.title
         except Exception as e:
             print(f"Failed to open file at path \"{path}\": {e}", file=stderr)
         
@@ -135,9 +136,7 @@ class MainApp(App[None]):
         
         btn = self.query_one("#play")
         btn.label = "|>"
-    
-        
-    
+
 
 if __name__ == "__main__": 
     app = MainApp()
