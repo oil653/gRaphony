@@ -195,13 +195,13 @@ class MainApp(App[None]):
         else:
             self.player.play()
 
-        self.query_one("#play", Label).update("||")
+        self.query_one("#play", Button).label = "||"
 
     def pause(self) -> None:
         self.timer.pause()
         self.player.pause()
 
-        self.query_one("#play", Label).update("|>")
+        self.query_one("#play", Button).label = "|>"
 
 
 if __name__ == "__main__":
