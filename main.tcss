@@ -1,12 +1,12 @@
 # Stopwatch {
 #     background: $boost;
 #     height: 5;
-#     margin: 1; 
+#     margin: 1;
 #     min-width: 50;
 #     padding: 1;
 # }
 
-# TimeDisplay { 
+# TimeDisplay {
 #     text-align: center;
 #     color: $foreground-muted;
 #     height: 3;
@@ -16,7 +16,7 @@
 #     width: 16;
 # }
 
-# #start { 
+# #start {
 #     dock: left
 # }
 
@@ -25,16 +25,16 @@
 #     display: none;
 # }
 
-# #reset { 
+# #reset {
 #     dock: right;
 # }
 
-# .started { 
+# .started {
 #     background: $success-muted;
 #     color: $text;
 # }
 
-# .started #start { 
+# .started #start {
 #     display: none;
 # }
 
@@ -42,21 +42,21 @@
 #     display: block;
 # }
 
-# .started #reset { 
+# .started #reset {
 #     visibility: hidden;
 # }
 
 MainApp {
     background: $background;
     height: 5;
-    margin: 1; 
+    margin: 1;
     min-width: 100;
     padding: 1;
 }
 
 # Top bar, with the music controls, and the playing media label
 #top_bar {
-    height: 10;
+    height: 11;
     width: 100%;
     background: $boost;
     content-align-horizontal: center;
@@ -71,9 +71,9 @@ MainApp {
 }
 
 # The labels for the media currently playing
-#media_label_container {
+#media_metadata {
     width: 100%;
-    height: 5;
+    height: 6;
 }
 
 
