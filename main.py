@@ -1,14 +1,12 @@
 from sys import stderr
 
-from crossfiledialog import open_file, open_multiple
+from crossfiledialog import open_file
 from just_playback import Playback
+from metaspector import MediaInspector
 from textual.app import App, ComposeResult
 from textual.containers import (
-    Container,
     HorizontalGroup,
-    HorizontalScroll,
     VerticalGroup,
-    VerticalScroll,
 )
 from textual.css.query import NoMatches
 from textual.reactive import reactive
@@ -51,11 +49,12 @@ class MediaControls(HorizontalGroup):
         yield Button(">|", id="next")
 
 
-class Track:
+class Metadata:
     title: str
     album: str
     artist: str
     filename: str
+    album_art_path: str
 
     def __init__(
         self,
@@ -63,23 +62,28 @@ class Track:
         album: str | None = "??",
         artist: str | None = "??",
         filename: str | None = "??",
+        album_art_path: str | None = "./assets/question_mark.png",
     ) -> None:
-        if title == None:
+        if title is None:
             title = "??"
 
-        if album == None:
+        if album is None:
             album = "??"
 
-        if artist == None:
+        if artist is None:
             artist = "??"
 
-        if filename == None:
+        if filename is None:
             filename = "??"
+
+        if album_art_path is None:
+            album_art_path = "./assets/question_mark.png"
 
         self.title = title
         self.album = album
         self.artist = artist
         self.filename = filename
+        self.album_art_path = album_art_path
 
 
 class MainApp(App[None]):
@@ -96,7 +100,7 @@ class MainApp(App[None]):
 
     # Something that plays media
     player: Playback
-    track = reactive(Track, init=True)
+    meta = reactive(Metadata, init=True)
 
     def compose(self) -> ComposeResult:
         yield Header(id="header")
@@ -105,24 +109,29 @@ class MainApp(App[None]):
             # Top thingy with basic controls
             with HorizontalGroup(id="playbar"):
                 yield MediaControls(id="media_controls")
-                yield TimeRemaining(id="time_remaining")
+                yield TimeRemaining(id="time")
 
             # The name of the media
             with HorizontalGroup(id="media_metadata"):
+                # Lables
                 with VerticalGroup(id="media_label_container"):
-                    yield Label(f"File: {self.track.filename}", id="current_filename")
-                    yield Label(f"Playing: {self.track.title}", id="current_title")
-                    yield Label(f"Album: {self.track.album}", id="current_album")
-                    yield Label(f"Artist: {self.track.artist}", id="current_artist")
+                    yield Label(f"File: {self.meta.filename}", id="current_filename")
+                    yield Label(f"Playing: {self.meta.title}", id="current_title")
+                    yield Label(f"Album: {self.meta.album}", id="current_album")
+                    yield Label(f"Artist: {self.meta.artist}", id="current_artist")
+
+                yield Image(image="assets/question_mark.png", id="media_image")
 
         yield Footer()
 
-    def watch_track(self, _old: Track, new: Track) -> None:
+    def watch_meta(self, _old: Metadata, new: Metadata) -> None:
         try:
             self.query_one("#current_filename", Label).update(f"File: {new.filename}")
             self.query_one("#current_title", Label).update(f"Playing: {new.title}")
             self.query_one("#current_album", Label).update(f"Album: {new.album}")
             self.query_one("#current_artist", Label).update(f"Artist: {new.artist}")
+
+            self.query_one("#media_image", Image).image = new.album_art_path
         except NoMatches:
             pass
 
@@ -159,8 +168,22 @@ class MainApp(App[None]):
             widget = self.query_one(TimeRemaining)
             widget.media_length = self.player.duration
 
+            inspector = MediaInspector(path)
+            cover_art_bytes = inspector.get_cover_art()
+            cover_path: str | None = None
+            if cover_art_bytes:
+                cover_path = "./assets/cover.png"
+                with open("./assets/cover.png", "wb") as f:
+                    f.write(cover_art_bytes)
+
             meta = TinyTag.get(path)
-            self.track = Track(meta.title, meta.artist, meta.album, meta.filename)
+            self.meta = Metadata(
+                title=meta.title,
+                artist=meta.artist,
+                album=meta.album,
+                filename=meta.filename,
+                album_art_path=cover_path,
+            )
         except Exception as e:
             print(f'Failed to open file at path "{path}": {e}', file=stderr)
 
@@ -172,14 +195,13 @@ class MainApp(App[None]):
         else:
             self.player.play()
 
-        self.query_one("#play").label = "||"
+        self.query_one("#play", Label).update("||")
 
     def pause(self) -> None:
         self.timer.pause()
         self.player.pause()
 
-        btn = self.query_one("#play")
-        btn.label = "|>"
+        self.query_one("#play", Label).update("|>")
 
 
 if __name__ == "__main__":
