@@ -106,21 +106,17 @@ class MainApp(App[None]):
         yield Header(id="header")
 
         with VerticalGroup(id="top_bar"):
-            # Top thingy with basic controls
-            with HorizontalGroup(id="playbar"):
-                yield MediaControls(id="media_controls")
-                yield TimeRemaining(id="time")
+            yield MediaControls(id="media_controls")
+            yield TimeRemaining(id="time")
 
-            # The name of the media
-            with HorizontalGroup(id="media_metadata"):
-                # Lables
-                with VerticalGroup(id="media_label_container"):
-                    yield Label(f"File: {self.meta.filename}", id="current_filename")
-                    yield Label(f"Playing: {self.meta.title}", id="current_title")
-                    yield Label(f"Album: {self.meta.album}", id="current_album")
-                    yield Label(f"Artist: {self.meta.artist}", id="current_artist")
+            # Labels
+            with VerticalGroup(id="media_label_container"):
+                yield Label(f"File: {self.meta.filename}", id="current_filename")
+                yield Label(f"Playing: {self.meta.title}", id="current_title")
+                yield Label(f"Album: {self.meta.album}", id="current_album")
+                yield Label(f"Artist: {self.meta.artist}", id="current_artist")
 
-                yield Image(image="assets/question_mark.png", id="media_image")
+            yield Image(image="assets/question_mark.png", id="media_image")
 
         yield Footer()
 
