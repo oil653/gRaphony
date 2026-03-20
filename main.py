@@ -92,6 +92,9 @@ class MainApp(App[None]):
     BINDINGS = [
         ("d", "toggle_dark", "Toggle dark mode"),
         ("o", "open_file", "Open a media file"),
+        ("space", "play", "Toggle playback"),
+        ("left", "back", "Previous"),
+        ("right", "next", "Next"),
     ]
 
     def __init__(self) -> None:
@@ -100,6 +103,7 @@ class MainApp(App[None]):
 
     # Something that plays media
     player: Playback
+    media_loaded: bool = False
     meta = reactive(Metadata, init=True)
 
     def compose(self) -> ComposeResult:
@@ -152,10 +156,8 @@ class MainApp(App[None]):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         idb = event.button.id
 
-        if idb == "play" and self.player.playing:
-            self.pause()
-        elif idb == "play" and not self.player.playing:
-            self.play()
+        if idb == "play":
+            self.toggle_play()
 
     def action_open_file(self) -> None:
         path = open_file("Chose a file to add to the queue", filter="*.mp3")
@@ -180,8 +182,26 @@ class MainApp(App[None]):
                 filename=meta.filename,
                 album_art_path=cover_path,
             )
+            self.media_loaded = True
         except Exception as e:
             print(f'Failed to open file at path "{path}": {e}', file=stderr)
+
+    def action_play(self) -> None:
+        self.toggle_play()
+
+    def action_next(self) -> None:
+        exit("To be implemented")
+
+    def action_back(self) -> None:
+        exit("To be implemented")
+
+    def toggle_play(self) -> None:
+        if not self.media_loaded:
+            pass
+        elif self.player.playing:
+            self.pause()
+        elif not self.player.playing:
+            self.play()
 
     def play(self) -> None:
         self.timer.resume()
