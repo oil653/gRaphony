@@ -8,7 +8,7 @@ MainApp {
 
 # Top bar, with the music controls, and the playing media label
 #top_bar {
-    height: 12;
+    height: 15;
     width: 100%;
     background: $boost;
     content-align-horizontal: center;
@@ -34,7 +34,7 @@ MainApp {
 }
 
 #media_image {
-    width: 50%;
+    width: 36;
     height: 100%;
     dock: right;
 }

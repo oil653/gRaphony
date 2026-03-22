@@ -1,3 +1,6 @@
+import hashlib
+import os
+from pathlib import Path
 from sys import stderr
 
 from crossfiledialog import open_file
@@ -9,10 +12,12 @@ from textual.containers import (
     VerticalGroup,
 )
 from textual.css.query import NoMatches
-from textual.reactive import reactive
+from textual.reactive import Reactive, reactive
 from textual.widgets import Button, Digits, Footer, Header, Label
 from textual_image.widget import Image
 from tinytag import TinyTag
+
+BASE_DIR: Path = Path(__file__).resolve().parent
 
 
 class TimeRemaining(Digits):
@@ -55,14 +60,19 @@ class Metadata:
     artist: str
     filename: str
     album_art_path: str
+    path: str | None
+
+    def is_some(self) -> bool:
+        return self.path is not None
 
     def __init__(
         self,
+        path: str | None = None,
         title: str | None = "??",
         album: str | None = "??",
         artist: str | None = "??",
         filename: str | None = "??",
-        album_art_path: str | None = "./assets/question_mark.png",
+        album_art_path: str | None = f"{BASE_DIR}/unknown.png",
     ) -> None:
         if title is None:
             title = "??"
@@ -77,13 +87,14 @@ class Metadata:
             filename = "??"
 
         if album_art_path is None:
-            album_art_path = "./assets/question_mark.png"
+            album_art_path = f"{BASE_DIR}/unknown.png"
 
         self.title = title
         self.album = album
         self.artist = artist
         self.filename = filename
         self.album_art_path = album_art_path
+        self.path = path
 
 
 class MainApp(App[None]):
@@ -91,20 +102,33 @@ class MainApp(App[None]):
 
     BINDINGS = [
         ("d", "toggle_dark", "Toggle dark mode"),
-        ("o", "open_file", "Open a media file"),
-        ("space", "play", "Toggle playback"),
-        ("left", "back", "Previous"),
+        ("o", "open_file", "Open a file"),
+        ("c", "clear", "Clear queue"),
+        ("space", "play", "Play/Pause"),
+        ("left", "previous", "Previous"),
         ("right", "next", "Next"),
     ]
 
     def __init__(self) -> None:
         super().__init__()
-        self.player = Playback()
 
-    # Something that plays media
-    player: Playback
+        os.makedirs(self.cache_dir, exist_ok=True)
+
+        # Build existing cache
+        for file in self.cache_dir.iterdir():
+            if file.is_file():
+                self.img_cache[file.stem] = file
+
+    cache_dir: Path = BASE_DIR / Path("cache")
+
+    player: Playback = Playback()
     media_loaded: bool = False
     meta = reactive(Metadata, init=True)
+    queue: Reactive[list[Metadata]] = reactive([])
+    played: Reactive[list[Metadata]] = reactive([])
+    # A cache of the thumbnail images.
+    # "hash": "path"
+    img_cache: dict = {}
 
     def compose(self) -> ComposeResult:
         yield Header(id="header")
@@ -120,11 +144,11 @@ class MainApp(App[None]):
                 yield Label(f"Album: {self.meta.album}", id="current_album")
                 yield Label(f"Artist: {self.meta.artist}", id="current_artist")
 
-            yield Image(image="assets/question_mark.png", id="media_image")
+            yield Image(image=f"{str(BASE_DIR)}/unknown.png", id="media_image")
 
         yield Footer()
 
-    def watch_meta(self, _old: Metadata, new: Metadata) -> None:
+    def watch_meta(self, old: Metadata, new: Metadata) -> None:
         try:
             self.query_one("#current_filename", Label).update(f"File: {new.filename}")
             self.query_one("#current_title", Label).update(f"Playing: {new.title}")
@@ -137,7 +161,9 @@ class MainApp(App[None]):
 
     def on_mount(self) -> None:
         self.title = "gRaphony"
-        self.sub_title = "Music player"
+        self.sub_title = "A music player"
+
+        self.theme = "tokyo-night"
 
         # Tick every 1 sec
         self.timer = self.set_interval(1 / 60, self.tick, pause=True)
@@ -147,53 +173,90 @@ class MainApp(App[None]):
         widget = self.query_one(TimeRemaining)
         widget.media_position = self.player.curr_pos
 
-    def action_toggle_dark(self) -> None:
-        """Toggles between dark and light mode"""
-        self.theme = (
-            "textual-dark" if self.theme == "textual-light" else "textual-light"
-        )
+        if (
+            self.player.duration > 0
+            and self.player.curr_pos >= self.player.duration
+            and len(self.queue) > 0
+        ):
+            self.next()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         idb = event.button.id
 
         if idb == "play":
             self.toggle_play()
+        elif idb == "previous":
+            self.previous()
+        elif idb == "next":
+            self.next()
 
     def action_open_file(self) -> None:
-        path = open_file("Chose a file to add to the queue", filter="*.mp3")
+        path: str = open_file("Chose a file to add to the queue", filter="*.mp3")
+        if len(path) == 0:
+            return
+
+        if len(self.queue) == 0 and not self.media_loaded:
+            self.load_file(path)
+            self.played.append(self.get_metadata(path))
+        else:
+            if len(path) > 0:
+                self.queue.append(self.get_metadata(path))
+
+    def load_file(self, path: str) -> None:
+        self.media_loaded = False
         try:
             self.player.load_file(path)
             widget = self.query_one(TimeRemaining)
             widget.media_length = self.player.duration
 
-            inspector = MediaInspector(path)
-            cover_art_bytes = inspector.get_cover_art()
-            cover_path: str | None = None
-            if cover_art_bytes:
-                cover_path = "./assets/cover.png"
-                with open("./assets/cover.png", "wb") as f:
-                    f.write(cover_art_bytes)
-
-            meta = TinyTag.get(path)
-            self.meta = Metadata(
-                title=meta.title,
-                artist=meta.artist,
-                album=meta.album,
-                filename=meta.filename,
-                album_art_path=cover_path,
-            )
             self.media_loaded = True
+            self.meta = self.get_metadata(path)
         except Exception as e:
             print(f'Failed to open file at path "{path}": {e}', file=stderr)
+
+    def get_metadata(self, path: str) -> Metadata:
+        cover_path: str | None = None
+
+        inspector = MediaInspector(path)
+        cover_bytes = inspector.get_cover_art()
+        if cover_bytes is not None:
+            cover_hash = hashlib.sha256(cover_bytes).hexdigest()
+            cover_lookup: Path | None = self.img_cache.get(cover_hash)
+
+            if cover_lookup and cover_lookup.exists():
+                cover_path = cover_lookup
+            else:
+                cover_path = f"{str(BASE_DIR)}/cache/{cover_hash}.png"
+                self.img_cache[cover_hash] = Path(cover_path)
+                with open(cover_path, "wb") as f:
+                    f.write(cover_bytes)
+
+        meta = TinyTag.get(path)
+        return Metadata(
+            path=path,
+            title=meta.title,
+            artist=meta.artist,
+            album=meta.album,
+            filename=meta.filename,
+            album_art_path=cover_path,
+        )
 
     def action_play(self) -> None:
         self.toggle_play()
 
     def action_next(self) -> None:
-        exit("To be implemented")
+        self.next()
 
-    def action_back(self) -> None:
-        exit("To be implemented")
+    def action_clear(self) -> None:
+        self.clear()
+
+    def action_previous(self) -> None:
+        self.previous()
+
+    def action_toggle_dark(self) -> None:
+        self.theme = (
+            "textual-dark" if self.theme == "textual-light" else "textual-light"
+        )
 
     def toggle_play(self) -> None:
         if not self.media_loaded:
@@ -202,6 +265,42 @@ class MainApp(App[None]):
             self.pause()
         elif not self.player.playing:
             self.play()
+
+    def next(self) -> None:
+        if len(self.queue) > 0:
+            obj = self.queue.pop(0)
+            if obj.path:
+                if self.meta.is_some():
+                    self.played.append(self.meta)
+
+                self.load_file(obj.path)
+                self.play()
+            else:
+                exit("Metadata instance from queue didnt have path field.")
+
+    def previous(self) -> None:
+        if len(self.played) > 0:
+            obj = self.played.pop(-1)
+            if obj.path:
+                if self.meta.is_some():
+                    self.queue.append(self.meta)
+
+                self.load_file(obj.path)
+                self.play()
+            else:
+                exit("Metadata instance from played didnt have path field.")
+
+    def clear(self) -> None:
+        self.media_loaded = False
+        self.meta = Metadata()
+        self.player.stop()
+        self.player = Playback()
+        self.queue.clear()
+        self.played.clear()
+
+        widget = self.query_one(TimeRemaining)
+        widget.media_position = 0
+        widget.media_length = 0
 
     def play(self) -> None:
         self.timer.resume()
