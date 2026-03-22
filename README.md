@@ -10,3 +10,4 @@ A terrible music player written in python, held together by hopes, prayers and d
 - [ ]    Save current session
 - [x]    Another empty box
 - [ ]    Seek command
+- [x]    "Are you sure" before exit.

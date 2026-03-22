@@ -2,12 +2,14 @@ import hashlib
 import os
 from pathlib import Path
 from sys import stderr
+from typing import Iterable
 
 from crossfiledialog import open_file
 from just_playback import Playback
 from metaspector import MediaInspector
-from textual.app import App, ComposeResult
+from textual.app import App, ComposeResult, SystemCommand
 from textual.containers import (
+    Grid,
     Horizontal,
     HorizontalGroup,
     Vertical,
@@ -16,6 +18,7 @@ from textual.containers import (
 )
 from textual.css.query import NoMatches
 from textual.reactive import Reactive, reactive
+from textual.screen import Screen
 from textual.widgets import Button, Digits, Footer, Header, Label
 from textual_image.widget import Image
 from tinytag import TinyTag
@@ -131,10 +134,28 @@ class MetaCard(HorizontalGroup):
             yield Image(image=self.meta.album_art_path, classes="meta_card_image")
 
 
+class QuitScreen(Screen):
+    def compose(self) -> ComposeResult:
+        yield Grid(
+            Label("Are you sure you want to quit?", id="question"),
+            Button("Quit", variant="error", id="quit", classes="button_fill"),
+            Button("Cancel", variant="primary", id="cancel", classes="button_fill"),
+            id="dialog",
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "quit":
+            self.app.exit()
+        else:
+            self.app.pop_screen()
+
+
 class MainApp(App[None]):
     CSS_PATH = "main.tcss"
 
     BINDINGS = [
+        ("ctrl+q", "ask_quit"),
+        ("q", "ask_quit", "Quit"),
         ("d", "toggle_dark", "Toggle dark mode"),
         ("o", "open_file", "Open a file"),
         ("c", "clear", "Clear queue"),
@@ -166,6 +187,11 @@ class MainApp(App[None]):
     img_cache: dict = {}
 
     # ===== UI =====
+    def get_system_commands(self, screen: Screen) -> Iterable[SystemCommand]:
+        syscomms = super().get_system_commands(screen)
+        disabled_commands = {"Quit", "Keys", "Maximize"}
+        return [cmd for cmd in syscomms if cmd.title not in disabled_commands]
+
     def compose(self) -> ComposeResult:
         yield Header(id="header")
 
@@ -288,6 +314,9 @@ class MainApp(App[None]):
 
     def action_toggle_dark(self) -> None:
         self.theme = "tokyo-night" if self.theme == "textual-light" else "textual-light"
+
+    def action_ask_quit(self) -> None:
+        self.push_screen(QuitScreen())
 
     # ===== Playback logic =====
 
