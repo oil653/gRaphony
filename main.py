@@ -359,7 +359,8 @@ class MainApp(App[None]):
             obj = self.played.pop(-1)
             if obj.path:
                 if self.meta.is_some():
-                    self.queue_append(self.meta)
+                    self.queue.insert(0, self.meta)
+                    self.watch_queue()
 
                 self.load_file(obj.path)
                 self.play()
