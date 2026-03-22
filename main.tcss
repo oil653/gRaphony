@@ -10,9 +10,10 @@ MainApp {
 #top_bar {
     height: 15;
     width: 100%;
-    background: $boost;
+    background: $surface;
     content-align-horizontal: center;
     border: solid;
+    margin: 0 1;
 }
 
 # Music controls
@@ -39,21 +40,41 @@ MainApp {
     dock: right;
 }
 
-
-
-
-.left, .center, .right {
-    width: 1fr;
+#bottom {
+    width: 100%;
+    height: 1fr;
 }
 
-.left {
-    align-horizontal: left;
+#played {
+    dock: right;
 }
 
-.center {
-    align-horizontal: center;
+#queue {
+    dock: left;
 }
 
-.right {
-    align-horizontal: right;
+.bottom_panel {
+    width: 50%;
+    height: 100%;
+    padding: 0 1;
+    margin: 1;
+    border: solid;
+    background: $surface;
+}
+
+.bottom_top_label {
+    content-align: center top;
+}
+
+.meta_card {
+    height: 7;
+    width: 100%;
+    margin: 0 1;
+    border: dashed $accent;
+}
+
+.meta_card_image {
+    dock: right;
+    height: 5;
+    width: 10;
 }

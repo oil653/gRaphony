@@ -8,8 +8,11 @@ from just_playback import Playback
 from metaspector import MediaInspector
 from textual.app import App, ComposeResult
 from textual.containers import (
+    Horizontal,
     HorizontalGroup,
+    Vertical,
     VerticalGroup,
+    VerticalScroll,
 )
 from textual.css.query import NoMatches
 from textual.reactive import Reactive, reactive
@@ -61,6 +64,7 @@ class Metadata:
     filename: str
     album_art_path: str
     path: str | None
+    duration_secons: float
 
     def is_some(self) -> bool:
         return self.path is not None
@@ -73,6 +77,7 @@ class Metadata:
         artist: str | None = "??",
         filename: str | None = "??",
         album_art_path: str | None = f"{BASE_DIR}/unknown.png",
+        duration_seconds: float | None = 0,
     ) -> None:
         if title is None:
             title = "??"
@@ -89,12 +94,41 @@ class Metadata:
         if album_art_path is None:
             album_art_path = f"{BASE_DIR}/unknown.png"
 
+        if duration_seconds is None:
+            duration_seconds = 0
+
         self.title = title
         self.album = album
         self.artist = artist
         self.filename = filename
         self.album_art_path = album_art_path
         self.path = path
+        self.duration_secons = duration_seconds
+
+
+class MetaCard(HorizontalGroup):
+    meta: Metadata
+
+    def __init__(self, meta: Metadata) -> None:
+        super().__init__()
+        self.meta = meta
+
+    def compose(self) -> ComposeResult:
+        with HorizontalGroup(classes="meta_card"):
+            with VerticalGroup():
+                yield Label(f"File: {self.meta.filename}", id="current_filename")
+                yield Label(f"Playing: {self.meta.title}", id="current_title")
+                yield Label(f"Album: {self.meta.album}", id="current_album")
+                yield Label(f"Artist: {self.meta.artist}", id="current_artist")
+
+                len_minutes, len_seconds = divmod(self.meta.duration_secons, 60)
+                len_hours, len_minutes = divmod(len_minutes, 60)
+                yield Label(
+                    f"Duration: {len_hours:02,.0f}:{len_minutes:02.0f}:{len_seconds:05.2f}",
+                    id="duration",
+                )
+
+            yield Image(image=self.meta.album_art_path, classes="meta_card_image")
 
 
 class MainApp(App[None]):
@@ -126,14 +160,17 @@ class MainApp(App[None]):
     meta = reactive(Metadata, init=True)
     queue: Reactive[list[Metadata]] = reactive([])
     played: Reactive[list[Metadata]] = reactive([])
+
     # A cache of the thumbnail images.
-    # "hash": "path"
+    # "hash": "cache/{HASH}.png"
     img_cache: dict = {}
 
+    # ===== UI =====
     def compose(self) -> ComposeResult:
         yield Header(id="header")
 
-        with VerticalGroup(id="top_bar"):
+        # Top, currently playing bar
+        with Vertical(id="top_bar"):
             yield MediaControls(id="media_controls")
             yield TimeRemaining(id="time")
 
@@ -146,7 +183,35 @@ class MainApp(App[None]):
 
             yield Image(image=f"{str(BASE_DIR)}/unknown.png", id="media_image")
 
+        # Bottom split between recently played and queue
+        with Horizontal(id="bottom"):
+            with Vertical(id="queue", classes="bottom_panel"):
+                yield Label("Queue", id="queue_label", classes="bottom_top_label")
+                yield VerticalScroll(id="queue_scroll")
+
+            with Vertical(id="played", classes="bottom_panel"):
+                yield Label(
+                    "Recently played", id="palyed_label", classes="bottom_top_label"
+                )
+                yield VerticalScroll(id="played_scroll")
+
         yield Footer()
+
+    def watch_queue(self) -> None:
+        scroll = self.query_one("#queue_scroll", VerticalScroll)
+        scroll.remove_children()
+
+        if len(self.queue) != 0:
+            for meta in self.queue:
+                scroll.mount(MetaCard(meta))
+
+    def watch_played(self) -> None:
+        scroll = self.query_one("#played_scroll", VerticalScroll)
+        scroll.remove_children()
+
+        if len(self.played) != 0:
+            for meta in self.played:
+                scroll.mount(MetaCard(meta))
 
     def watch_meta(self, old: Metadata, new: Metadata) -> None:
         try:
@@ -197,10 +262,34 @@ class MainApp(App[None]):
 
         if len(self.queue) == 0 and not self.media_loaded:
             self.load_file(path)
-            self.played.append(self.get_metadata(path))
         else:
             if len(path) > 0:
-                self.queue.append(self.get_metadata(path))
+                self.queue_append(self.get_metadata(path))
+
+    def queue_append(self, item: Metadata) -> None:
+        self.queue.append(item)
+        self.watch_queue()
+
+    def played_append(self, item: Metadata) -> None:
+        self.played.append(item)
+        self.watch_played()
+
+    def action_play(self) -> None:
+        self.toggle_play()
+
+    def action_next(self) -> None:
+        self.next()
+
+    def action_clear(self) -> None:
+        self.clear()
+
+    def action_previous(self) -> None:
+        self.previous()
+
+    def action_toggle_dark(self) -> None:
+        self.theme = "tokyo-night" if self.theme == "textual-light" else "textual-light"
+
+    # ===== Playback logic =====
 
     def load_file(self, path: str) -> None:
         self.media_loaded = False
@@ -239,23 +328,7 @@ class MainApp(App[None]):
             album=meta.album,
             filename=meta.filename,
             album_art_path=cover_path,
-        )
-
-    def action_play(self) -> None:
-        self.toggle_play()
-
-    def action_next(self) -> None:
-        self.next()
-
-    def action_clear(self) -> None:
-        self.clear()
-
-    def action_previous(self) -> None:
-        self.previous()
-
-    def action_toggle_dark(self) -> None:
-        self.theme = (
-            "textual-dark" if self.theme == "textual-light" else "textual-light"
+            duration_seconds=meta.duration,
         )
 
     def toggle_play(self) -> None:
@@ -271,10 +344,13 @@ class MainApp(App[None]):
             obj = self.queue.pop(0)
             if obj.path:
                 if self.meta.is_some():
-                    self.played.append(self.meta)
+                    self.played_append(self.meta)
 
                 self.load_file(obj.path)
                 self.play()
+
+                self.watch_queue()
+                self.watch_played()
             else:
                 exit("Metadata instance from queue didnt have path field.")
 
@@ -283,13 +359,17 @@ class MainApp(App[None]):
             obj = self.played.pop(-1)
             if obj.path:
                 if self.meta.is_some():
-                    self.queue.append(self.meta)
+                    self.queue_append(self.meta)
 
                 self.load_file(obj.path)
                 self.play()
+
+                self.watch_played()
+                self.watch_queue()
             else:
                 exit("Metadata instance from played didnt have path field.")
 
+    # Reset app as if it was just launched
     def clear(self) -> None:
         self.media_loaded = False
         self.meta = Metadata()
