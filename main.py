@@ -164,6 +164,8 @@ class MainApp(App[None]):
         ("shift+left", "seek_back", "-5 sec"),
         ("right", "next", "Next"),
         ("shift+right", "seek_forward", "+5 sec"),
+        ("up", "vol_up", "Vol up"),
+        ("down", "vol_down", "Vol down"),
     ]
 
     def __init__(self) -> None:
@@ -183,6 +185,7 @@ class MainApp(App[None]):
     meta = reactive(Metadata, init=True)
     queue: Reactive[list[Metadata]] = reactive([])
     played: Reactive[list[Metadata]] = reactive([])
+    volume: Reactive[float] = reactive(1.0)
 
     # A cache of the thumbnail images.
     # "hash": "cache/{HASH}.png"
@@ -208,6 +211,7 @@ class MainApp(App[None]):
                 yield Label(f"Playing: {self.meta.title}", id="current_title")
                 yield Label(f"Album: {self.meta.album}", id="current_album")
                 yield Label(f"Artist: {self.meta.artist}", id="current_artist")
+                yield Label(f"Volume: {int(self.volume * 100)}%", id="volume")
 
             yield Image(image=f"{str(BASE_DIR)}/unknown.png", id="media_image")
 
@@ -249,6 +253,15 @@ class MainApp(App[None]):
             self.query_one("#current_artist", Label).update(f"Artist: {new.artist}")
 
             self.query_one("#media_image", Image).image = new.album_art_path
+        except NoMatches:
+            pass
+
+    def watch_volume(self) -> None:
+        try:
+            self.player.set_volume(self.volume)
+            self.query_one("#volume", Label).update(
+                f"Volume: {int(self.volume * 100)}%"
+            )
         except NoMatches:
             pass
 
@@ -331,6 +344,14 @@ class MainApp(App[None]):
         if self.media_loaded and self.player.curr_pos + 5 <= self.player.duration:
             self.player.seek(self.player.curr_pos + 5)
 
+    def action_vol_up(self) -> None:
+        if self.volume <= 0.98:
+            self.volume += 0.02
+
+    def action_vol_down(self) -> None:
+        if self.volume >= 0.02:
+            self.volume -= 0.02
+
     # ===== Playback logic =====
 
     def load_file(self, path: str) -> None:
@@ -412,12 +433,12 @@ class MainApp(App[None]):
             else:
                 exit("Metadata instance from played didnt have path field.")
 
-    # Reset app as if it was just launched
     def clear(self) -> None:
         self.media_loaded = False
         self.meta = Metadata()
         self.player.stop()
         self.player = Playback()
+        self.player.set_volume(self.volume)
         self.queue.clear()
         self.played.clear()
 
