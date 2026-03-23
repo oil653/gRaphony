@@ -24,6 +24,7 @@ from textual_image.widget import Image
 from tinytag import TinyTag
 
 BASE_DIR: Path = Path(__file__).resolve().parent
+SESSION_CSV: Path = Path(f"{BASE_DIR}/session.csv").resolve()
 
 
 class TimeRemaining(Digits):
@@ -138,16 +139,32 @@ class QuitScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Grid(
             Label("Are you sure you want to quit?", id="question"),
+            Button(
+                "Quit and save",
+                variant="warning",
+                id="save_quit",
+                classes="button_fill",
+            ),
             Button("Quit", variant="error", id="quit", classes="button_fill"),
             Button("Cancel", variant="primary", id="cancel", classes="button_fill"),
-            id="dialog",
+            id="quit_dialog",
         )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "quit":
-            self.app.exit()
-        else:
-            self.app.pop_screen()
+        self.dismiss(result={"action": f"{event.button.id}"})
+
+
+class LoadSessionScreen(Screen):
+    def compose(self) -> ComposeResult:
+        yield Grid(
+            Label("Load previous session?", id="question"),
+            Button("Yes", variant="primary", id="load", classes="button_fill"),
+            Button("No", variant="primary", id="no_load", classes="button_fill"),
+            id="load_dialog",
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(result={"action": f"{event.button.id}"})
 
 
 class MainApp(App[None]):
@@ -171,9 +188,8 @@ class MainApp(App[None]):
     def __init__(self) -> None:
         super().__init__()
 
+        # Build cache map
         os.makedirs(self.cache_dir, exist_ok=True)
-
-        # Build existing cache
         for file in self.cache_dir.iterdir():
             if file.is_file():
                 self.img_cache[file.stem] = file
@@ -191,7 +207,7 @@ class MainApp(App[None]):
     # "hash": "cache/{HASH}.png"
     img_cache: dict = {}
 
-    # ===== UI =====
+    # ===== (mostly) UI =====
     def get_system_commands(self, screen: Screen) -> Iterable[SystemCommand]:
         syscomms = super().get_system_commands(screen)
         disabled_commands = {"Quit", "Keys", "Maximize"}
@@ -241,9 +257,12 @@ class MainApp(App[None]):
         scroll = self.query_one("#played_scroll", VerticalScroll)
         scroll.remove_children()
 
+        childs: list[MetaCard] = []
         if len(self.played) != 0:
             for meta in self.played:
-                scroll.mount(MetaCard(meta))
+                childs.append(MetaCard(meta))
+
+        scroll.mount_all(childs.__reversed__())
 
     def watch_meta(self, old: Metadata, new: Metadata) -> None:
         try:
@@ -269,6 +288,40 @@ class MainApp(App[None]):
         self.title = "gRaphony"
         self.sub_title = "A music player"
 
+        # Load session from file if it exists
+        if SESSION_CSV.exists():
+
+            def handle_load_dialog(result) -> None:
+                action: str = result["action"]
+
+                if action == "load":
+                    with open(SESSION_CSV, "r", encoding="UTF-8") as f:
+                        for line in f:
+                            data: list[str] = line.strip().split(";")
+
+                            match data[0]:
+                                case "volume":
+                                    self.volume = float(data[1])
+                                case "current":
+                                    if os.path.exists(data[2]):
+                                        self.load_file(data[2])
+                                        self.player.play()
+                                        self.player.pause()
+                                        self.player.seek(float(data[1]))
+                                        self.query_one(
+                                            TimeRemaining
+                                        ).media_position = self.player.curr_pos
+                                case "queue":
+                                    for path in data[1:]:
+                                        if os.path.exists(path):
+                                            self.queue_append(self.get_metadata(path))
+                                case "played":
+                                    for path in data[1:]:
+                                        if os.path.exists(path):
+                                            self.played_append(self.get_metadata(path))
+
+            self.push_screen(LoadSessionScreen(), callback=handle_load_dialog)
+
         self.theme = "tokyo-night"
 
         # Tick every 1 sec
@@ -276,8 +329,7 @@ class MainApp(App[None]):
         self.timer.pause()  # The player will not play anything by default
 
     def tick(self) -> None:
-        widget = self.query_one(TimeRemaining)
-        widget.media_position = self.player.curr_pos
+        self.query_one(TimeRemaining).media_position = self.player.curr_pos
 
         if len(self.queue) > 0 and (
             self.player.duration > 0
@@ -334,7 +386,16 @@ class MainApp(App[None]):
         self.theme = "tokyo-night" if self.theme == "textual-light" else "textual-light"
 
     def action_ask_quit(self) -> None:
-        self.push_screen(QuitScreen())
+        def handle_quit_result(result) -> None:
+            action: str = result["action"]
+
+            if action == "quit":
+                self.exit(return_code=0)
+            elif action == "save_quit":
+                self.save()
+                self.exit(return_code=0)
+
+        self.push_screen(QuitScreen(), callback=handle_quit_result)
 
     def action_seek_back(self) -> None:
         if self.media_loaded and self.player.curr_pos >= 5:
@@ -352,7 +413,7 @@ class MainApp(App[None]):
         if self.volume >= 0.02:
             self.volume -= 0.02
 
-    # ===== Playback logic =====
+    # ===== (mostly) Business logic =====
 
     def load_file(self, path: str) -> None:
         self.media_loaded = False
@@ -461,6 +522,49 @@ class MainApp(App[None]):
         self.player.pause()
 
         self.query_one("#play", Button).label = "|>"
+
+    def save(self) -> None:
+        """Saves current session to session.csv"""
+
+        with open(SESSION_CSV, "w", encoding="UTF-8") as f:
+            print(f"volume;{self.volume}", file=f)
+
+            if self.meta.path is not None:
+                print(f"current;{self.player.curr_pos};{self.meta.path}", file=f)
+
+            queue_paths: str | None = self.get_queue_string()
+            if queue_paths is not None:
+                print(f"queue;{queue_paths}", file=f)
+
+            palyed_paths: str | None = self.get_played_string()
+            if palyed_paths is not None:
+                print(f"played;{palyed_paths}", file=f)
+
+    def get_played_string(self) -> str | None:
+        played_paths: str | None = None
+
+        if len(self.played) > 0:
+            for q in self.played:
+                if q.path:
+                    if played_paths is None:
+                        played_paths = q.path
+                    else:
+                        played_paths += f";{q.path}"
+
+        return played_paths
+
+    def get_queue_string(self) -> str | None:
+        queue_paths: str | None = None
+
+        if len(self.queue) > 0:
+            for q in self.queue:
+                if q.path:
+                    if queue_paths is None:
+                        queue_paths = q.path
+                    else:
+                        queue_paths += f";{q.path}"
+
+        return queue_paths
 
 
 if __name__ == "__main__":
