@@ -161,7 +161,9 @@ class MainApp(App[None]):
         ("c", "clear", "Clear queue"),
         ("space", "play", "Play/Pause"),
         ("left", "previous", "Previous"),
+        ("shift+left", "seek_back", "-5 sec"),
         ("right", "next", "Next"),
+        ("shift+right", "seek_forward", "+5 sec"),
     ]
 
     def __init__(self) -> None:
@@ -264,10 +266,13 @@ class MainApp(App[None]):
         widget = self.query_one(TimeRemaining)
         widget.media_position = self.player.curr_pos
 
-        if (
+        if len(self.queue) > 0 and (
             self.player.duration > 0
-            and self.player.curr_pos >= self.player.duration
-            and len(self.queue) > 0
+            and self.media_loaded
+            and (self.player.curr_pos >= self.player.duration)
+            or (
+                not self.player.playing and self.player.curr_pos == 0
+            )  # this should be fine :3
         ):
             self.next()
 
@@ -317,6 +322,14 @@ class MainApp(App[None]):
 
     def action_ask_quit(self) -> None:
         self.push_screen(QuitScreen())
+
+    def action_seek_back(self) -> None:
+        if self.media_loaded and self.player.curr_pos >= 5:
+            self.player.seek(self.player.curr_pos - 5)
+
+    def action_seek_forward(self) -> None:
+        if self.media_loaded and self.player.curr_pos + 5 <= self.player.duration:
+            self.player.seek(self.player.curr_pos + 5)
 
     # ===== Playback logic =====
 
