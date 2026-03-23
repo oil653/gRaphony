@@ -286,7 +286,7 @@ class MainApp(App[None]):
 
     def on_mount(self) -> None:
         self.title = "gRaphony"
-        self.sub_title = "A music player"
+        self.sub_title = "One of the music players of all time"
 
         # Load session from file if it exists
         if SESSION_CSV.exists():
@@ -300,6 +300,8 @@ class MainApp(App[None]):
                             data: list[str] = line.strip().split(";")
 
                             match data[0]:
+                                case "theme":
+                                    self.theme = data[1]
                                 case "volume":
                                     self.volume = float(data[1])
                                 case "current":
@@ -502,6 +504,8 @@ class MainApp(App[None]):
         self.player.set_volume(self.volume)
         self.queue.clear()
         self.played.clear()
+        self.watch_queue()
+        self.watch_played()
 
         widget = self.query_one(TimeRemaining)
         widget.media_position = 0
@@ -527,6 +531,7 @@ class MainApp(App[None]):
         """Saves current session to session.csv"""
 
         with open(SESSION_CSV, "w", encoding="UTF-8") as f:
+            print(f"theme;{self.theme}", file=f)
             print(f"volume;{self.volume}", file=f)
 
             if self.meta.path is not None:
